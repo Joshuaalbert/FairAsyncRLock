@@ -7,6 +7,10 @@ Develop
 Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=develop)
 
 This is a well-tested standalone implementation of a fair reentrant lock for conncurrent programming with asyncio.
+This was built
+because [python decided not to support RLock in asyncio](https://discuss.python.org/t/asyncio-rlock-reentrant-locks-for-async-python/21509),
+their [argument](https://discuss.python.org/t/asyncio-rlock-reentrant-locks-for-async-python/21509/2) being that every
+extra bit of functionality adds to maintenance cost.
 
 ## About Fair Reentrant Lock for AsyncIO
 
@@ -68,7 +72,7 @@ async def fairness():
     async def worker(n):
         async with lock:
             order.append(n)
-            await asyncio.sleep(0) # emulate work
+            await asyncio.sleep(0)  # emulate work
 
     # Start several tasks to acquire the lock
     tasks = [asyncio.create_task(worker(i)) for i in range(num_tasks)]
@@ -85,7 +89,7 @@ async def fairness():
 
 It's also important to note the potential downsides of using a reentrant lock.
 For one, they can hide bugs in code that isn't properly synchronized, since
-the same task can acquire a reentrant lock multiple times without issue. 
+the same task can acquire a reentrant lock multiple times without issue.
 
 **_Non-reentrant locks are often simpler and can expose synchronization bugs more easily, so you should only use a
 reentrant lock if you have a specific need for it._**
