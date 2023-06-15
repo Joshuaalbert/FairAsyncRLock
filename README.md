@@ -1,10 +1,13 @@
 # FairAsyncRLock
+
 [![Python](https://img.shields.io/pypi/pyversions/fair_async_rlock.svg)](https://badge.fury.io/py/fair_async_rlock)
 [![PyPI](https://badge.fury.io/py/fair_async_rlock.svg)](https://badge.fury.io/py/fair_async_rlock)
 
-Main Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=main)
+Main
+Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=main)
 
-Develop Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=develop)
+Develop
+Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=develop)
 
 This is a well-tested standalone implementation of a fair reentrant lock for conncurrent programming with asyncio.
 This was built
@@ -41,7 +44,7 @@ A reentrant lock can be useful in a number of scenarios:
 This code demonstrates the reentrant property:
 
 ```python
-from fair_async_rlock.fair_async_rlock import FairAsyncRLock
+from fair_async_rlock import FairAsyncRLock
 
 
 async def reentrant():
@@ -61,7 +64,7 @@ This code demonstrates fairness:
 ```python
 import asyncio
 
-from fair_async_rlock.fair_async_rlock import FairAsyncRLock
+from fair_async_rlock import FairAsyncRLock
 
 
 async def fairness():
@@ -93,3 +96,8 @@ the same task can acquire a reentrant lock multiple times without issue.
 
 **_Non-reentrant locks are often simpler and can expose synchronization bugs more easily, so you should only use a
 reentrant lock if you have a specific need for it._**
+
+### Performance
+
+The performance is about 50% slower than `asyncio.Lock`, i.e. overhead of sequential locks is about 3/2 of same
+with `asyncio.Lock`.

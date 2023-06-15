@@ -3,7 +3,7 @@ from time import monotonic_ns, perf_counter
 
 import pytest
 
-from fair_async_rlock.fair_async_rlock import FairAsyncRLock
+from fair_async_rlock import FairAsyncRLock
 
 
 @pytest.mark.asyncio
@@ -254,7 +254,7 @@ async def test_performance_comparison():
         print(f"Relative performance: {(perf_ratio - 1) * 100:0.1f}% slower")
     else:
         print(f"Relative performance: {(1 - perf_ratio) * 100:0.1f}% faster")
-    assert perf_ratio < 2. # Solid upper bound
+    assert perf_ratio < 2.  # Solid upper bound
 
 
 @pytest.mark.asyncio
