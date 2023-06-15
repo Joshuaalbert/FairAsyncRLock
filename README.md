@@ -1,10 +1,10 @@
 # FairAsyncRLock
+[![Python](https://img.shields.io/pypi/pyversions/fair_async_rlock.svg)](https://badge.fury.io/py/fair_async_rlock)
+[![PyPI](https://badge.fury.io/py/fair_async_rlock.svg)](https://badge.fury.io/py/fair_async_rlock)
 
-Main
-Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=main)
+Main Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=main)
 
-Develop
-Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=develop)
+Develop Status: ![Workflow name](https://github.com/JoshuaAlbert/FairAsyncRLock/actions/workflows/unittests.yml/badge.svg?branch=develop)
 
 This is a well-tested standalone implementation of a fair reentrant lock for conncurrent programming with asyncio.
 This was built
