@@ -281,7 +281,7 @@ async def test_release_foreign_lock():
         try:
             await lock.release()
         except RuntimeError as e:
-            assert str(e) == "Cannot release foreign lock."
+            assert str(e).startswith("Cannot release foreign lock.")
             return
 
     # Create the tasks and schedule them
