@@ -1,4 +1,5 @@
 import asyncio
+import random
 from time import monotonic_ns, perf_counter
 
 import pytest
@@ -378,3 +379,112 @@ async def test_task_cancellation():
     # Ensure that lock is not owned and queue is empty after cancellation
     assert lock._owner is None
     assert len(lock._queue) == 0
+
+
+@pytest.mark.asyncio
+async def test_lock_cancellation_before_acquisition():
+    lock = FairAsyncRLock()
+    cancellation_event = asyncio.Event()
+
+    async def task_to_cancel():
+        try:
+            async with lock:
+                await asyncio.sleep(1)  # simulate some work
+        except asyncio.CancelledError:
+            cancellation_event.set()
+
+    task = asyncio.create_task(task_to_cancel())
+    await asyncio.sleep(0)  # yield control to let the task start
+    task.cancel()
+    await cancellation_event.wait()  # wait for the task to handle the cancellation
+
+    assert lock._owner is None  # lock should not be owned by any task
+
+
+@pytest.mark.asyncio
+async def test_lock_cancellation_during_acquisition():
+    lock = FairAsyncRLock()
+    acquisition_event = asyncio.Event()
+    cancellation_event = asyncio.Event()
+
+    async def task_acquiring_lock():
+        await lock.acquire()  # acquire the lock without releasing
+        acquisition_event.set()  # signal that lock has been acquired
+
+    async def task_to_cancel():
+        await acquisition_event.wait()  # wait for the other task to acquire the lock
+        try:
+            async with lock:  # attempt to acquire the lock
+                await asyncio.sleep(1)  # simulate some work
+        except asyncio.CancelledError:
+            cancellation_event.set()
+
+    first_task = asyncio.create_task(task_acquiring_lock())
+    task = asyncio.create_task(task_to_cancel())
+    await asyncio.sleep(0)  # yield control to let the tasks start
+    await acquisition_event.wait()  # wait for the lock to be acquired
+    task.cancel()
+    await cancellation_event.wait()  # wait for the task to handle the cancellation
+
+    assert lock.is_owner(task=first_task)  # lock should still be owned by the first task
+
+
+@pytest.mark.asyncio
+async def test_lock_cancellation_after_acquisition():
+    lock = FairAsyncRLock()
+    cancellation_event = asyncio.Event()
+
+    async def task_to_cancel():
+        async with lock:  # acquire the lock
+            try:
+                await asyncio.sleep(1)  # simulate some work
+            except asyncio.CancelledError:
+                cancellation_event.set()
+
+    task = asyncio.create_task(task_to_cancel())
+    await asyncio.sleep(0)  # yield control to let the task start
+    task.cancel()
+    await cancellation_event.wait()  # wait for the task to handle the cancellation
+
+    assert lock._owner is None  # lock should not be owned by any task
+
+
+@pytest.mark.asyncio
+async def test_stochastic_cancellation():
+    lock = FairAsyncRLock()
+    num_tasks = 10  # number of tasks to create
+    tasks = []
+    cancellation_occurred = asyncio.Event()
+
+    async def task_func(task_id):
+        """Function to be run in tasks. Tries to acquire and release the lock."""
+        try:
+            await asyncio.sleep(random.random())  # simulate work with random duration
+            async with lock:
+                print(f"Task {task_id} acquired lock")
+                await asyncio.sleep(random.random())  # simulate work with random duration
+        except asyncio.CancelledError:
+            print(f"Task {task_id} was cancelled")
+            cancellation_occurred.set()
+
+    async def monitor_func():
+        """Function to be run in monitor task. Randomly cancels one of the tasks."""
+        await asyncio.sleep(random.random())  # wait random duration before cancelling a task
+        task_to_cancel = random.choice(tasks)
+        task_to_cancel.cancel()
+
+    # Create tasks
+    for i in range(num_tasks):
+        tasks.append(asyncio.create_task(task_func(i)))
+
+    await asyncio.sleep(0)
+    # Create monitor task
+    monitor_task = asyncio.create_task(monitor_func())
+
+    # Wait for all tasks to complete or be cancelled
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    await monitor_task
+
+    # At least one cancellation should have occurred
+    assert cancellation_occurred.is_set()

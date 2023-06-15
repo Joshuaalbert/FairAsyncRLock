@@ -22,39 +22,39 @@ class FairAsyncRLock:
         """Acquire the lock."""
         me = asyncio.current_task()
 
+        # If the lock is reentrant, acquire it immediately
         if self.is_owner(task=me):
             self._count += 1
             return
 
-        # If the lock is free or reentrant, acquire it immediately
+        # If the lock is free, acquire it immediately
         if self._count == 0:
-            # if self._count == 0  or self._owner == me: (redundant second clause)
-            self._owner = me
-            self._count += 1
-        else:
-            # Create an event for this task
-            event = asyncio.Event()
-            self._queue.append(event)
-
-            # Wait for the lock to be free
-            try:
-                await event.wait()
-            except asyncio.CancelledError:
-                self._queue.remove(event)
-                raise
-
             self._owner = me
             self._count = 1
+            return
+
+        # Create an event for this task, to notify when it's ready for acquire
+        event = asyncio.Event()
+        self._queue.append(event)
+
+        # Wait for the lock to be free, then acquire
+        try:
+            await event.wait()
+            self._owner = me
+            self._count = 1
+        except asyncio.CancelledError:
+            self._queue.remove(event)
+            raise
 
     async def release(self):
         """Release the lock"""
         me = asyncio.current_task()
 
         if self._owner is None:
-            raise RuntimeError("Cannot release un-acquired lock.")
+            raise RuntimeError(f"Cannot release un-acquired lock. {me} tried to release.")
 
         if not self.is_owner(task=me):
-            raise RuntimeError("Cannot release foreign lock.")
+            raise RuntimeError(f"Cannot release foreign lock. {me} tried to unlock {self._owner}.")
 
         self._count -= 1
         if self._count == 0:
