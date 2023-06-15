@@ -1,6 +1,7 @@
 import asyncio
 from collections import deque
 
+__all__ = ['FairAsyncRLock']
 
 class FairAsyncRLock:
     """
