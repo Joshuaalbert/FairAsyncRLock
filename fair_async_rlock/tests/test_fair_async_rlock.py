@@ -61,11 +61,11 @@ async def test_unowned_release():
     lock = FairAsyncRLock()
 
     with pytest.raises(RuntimeError, match="Cannot release un-acquired lock."):
-        await lock.release()
+        lock.release()
 
     async def worker():
         with pytest.raises(RuntimeError, match="Cannot release un-acquired lock."):
-            await lock.release()
+            lock.release()
 
     await asyncio.gather(worker())
 
@@ -214,7 +214,7 @@ async def test_concurrent_acquisition():
         await lock.acquire()  # This will block until the lock can be acquired
         result.append(n)
         await asyncio.sleep(0)  # Yield control
-        await lock.release()
+        lock.release()
 
     # Start several tasks concurrently
     tasks = [asyncio.create_task(worker(i)) for i in range(5)]
@@ -279,7 +279,7 @@ async def test_release_foreign_lock():
     async def task2():
         # Wait for both tasks to complete
         try:
-            await lock.release()
+            lock.release()
         except RuntimeError as e:
             assert str(e).startswith("Cannot release foreign lock.")
             return
@@ -339,12 +339,12 @@ async def test_acquire_exception_handling():
             await lock.acquire()
             raise RuntimeError("Simulated exception during acquire")
         except:
-            await lock.release()
+            lock.release()
             raise
 
     async def succeeding_task():
         await lock.acquire()
-        await lock.release()
+        lock.release()
 
     task1 = asyncio.create_task(failing_task())
     task2 = asyncio.create_task(succeeding_task())
@@ -364,7 +364,7 @@ async def test_task_cancellation():
     async def task1():
         await lock.acquire()
         await asyncio.sleep(0.1)  # Let's ensure the lock is held for a bit
-        await lock.release()
+        lock.release()
 
     async def task2():
         await lock.acquire()
@@ -488,3 +488,53 @@ async def test_stochastic_cancellation():
 
     # At least one cancellation should have occurred
     assert cancellation_occurred.is_set()
+
+
+class DelayedFairAsyncRLock(FairAsyncRLock):
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Release the lock"""
+        await asyncio.sleep(0.1)
+        await super().__aexit__(exc_type, exc_val, exc_tb)
+
+
+class ExceptionFairAsyncRLock(FairAsyncRLock):
+    def release(self):
+        """Release the lock"""
+        raise asyncio.CancelledError()
+        super().release()
+
+
+@pytest.mark.asyncio
+async def test_delayed_release():
+    lock = DelayedFairAsyncRLock()
+
+    async def first_task():
+        async with lock:
+            await asyncio.sleep(0.1)  # hold lock for a moment
+
+    async def second_task():
+        await asyncio.sleep(0.05)  # wait until first task has lock
+        await lock.acquire()
+        got_lock = lock.is_owner()
+        lock.release()
+        return got_lock
+
+    t1 = asyncio.create_task(first_task())
+    t2 = asyncio.create_task(second_task())
+    await asyncio.gather(t1, t2)
+
+    assert t2.result() is True, "Second task should acquire the lock after the first task has released it"
+
+
+@pytest.mark.asyncio
+async def test_exception_on_release_gh7():
+    lock = ExceptionFairAsyncRLock()
+
+    async def task():
+        with pytest.raises(asyncio.CancelledError):
+            async with lock:
+                pass  # no action needed inside
+
+    await asyncio.create_task(task())
+    assert lock._owner is None, "Lock owner should be None after an exception"
+    assert len(lock._queue) == 0, "Lock queue should be empty after an exception"
