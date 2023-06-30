@@ -452,7 +452,7 @@ async def test_lock_cancellation_after_acquisition():
 @pytest.mark.asyncio
 async def test_stochastic_cancellation():
     lock = FairAsyncRLock()
-    num_tasks = 10  # number of tasks to create
+    num_tasks = 100  # number of tasks to create
     tasks = []
     cancellation_occurred = asyncio.Event()
 
@@ -470,8 +470,13 @@ async def test_stochastic_cancellation():
     async def monitor_func():
         """Function to be run in monitor task. Randomly cancels one of the tasks."""
         await asyncio.sleep(random.random())  # wait random duration before cancelling a task
-        task_to_cancel = random.choice(tasks)
-        task_to_cancel.cancel()
+        order = list(range(len(tasks)))
+        random.shuffle(order)
+        for i in order:
+            task_to_cancel = tasks[i]
+            if not task_to_cancel.done():
+                task_to_cancel.cancel()
+
 
     # Create tasks
     for i in range(num_tasks):
