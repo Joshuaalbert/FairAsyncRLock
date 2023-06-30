@@ -23,5 +23,5 @@ Ideally you provide some short code that demonstrates the bug. When this is real
 #code goes here
 ```
 
-**JAXNS version**
+**FairAsyncRLock version**
 Output of `pip freeze | grep fair_async_rlock`:
