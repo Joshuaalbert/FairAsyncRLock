@@ -44,7 +44,9 @@ class FairAsyncRLock:
             self._owner = me
             self._count = 1
         except asyncio.CancelledError:
-            self._queue.remove(event)
+            self._owner = me
+            self._count = 1
+            self._current_task_release()
             raise
 
     def _current_task_release(self):
