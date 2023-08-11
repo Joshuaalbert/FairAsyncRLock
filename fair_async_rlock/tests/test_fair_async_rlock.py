@@ -360,21 +360,30 @@ async def test_acquire_exception_handling():
 async def test_task_cancellation():
     # We need to verify that if a task is cancelled while waiting for the lock, it gets removed from the queue.
     lock = FairAsyncRLock()
+    t1_ac = asyncio.Event()
+    t1_done = asyncio.Event()
+    t2_ac = asyncio.Event()
 
     async def task1():
-        await lock.acquire()
-        await asyncio.sleep(0.1)  # Let's ensure the lock is held for a bit
-        lock.release()
+        async with lock:
+            t1_ac.set()
+            await t1_done.wait()
 
     async def task2():
-        await lock.acquire()
+        await t1_ac.wait()
+        async with lock:
+            t2_ac.set()
+            await asyncio.sleep(1.)  # Let's ensure the lock is held for a bit
+
 
     task1 = asyncio.create_task(task1())
     task2 = asyncio.create_task(task2())
-    await asyncio.sleep(0)  # Yield control to allow tasks to start
+    await asyncio.sleep(0.1)  # Yield control to allow tasks to start
     task2.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task2
+    assert not t2_ac.is_set() # shouldn't acquire
+    t1_done.set() # Let T1 finish
     await task1  # Ensure task1 has a chance to release the lock
     # Ensure that lock is not owned and queue is empty after cancellation
     assert lock._owner is None
@@ -477,7 +486,6 @@ async def test_stochastic_cancellation():
             if not task_to_cancel.done():
                 task_to_cancel.cancel()
 
-
     # Create tasks
     for i in range(num_tasks):
         tasks.append(asyncio.create_task(task_func(i)))
@@ -502,13 +510,6 @@ class DelayedFairAsyncRLock(FairAsyncRLock):
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
 
-class ExceptionFairAsyncRLock(FairAsyncRLock):
-    def release(self):
-        """Release the lock"""
-        raise asyncio.CancelledError()
-        super().release()
-
-
 @pytest.mark.asyncio
 async def test_delayed_release():
     lock = DelayedFairAsyncRLock()
@@ -531,8 +532,15 @@ async def test_delayed_release():
     assert t2.result() is True, "Second task should acquire the lock after the first task has released it"
 
 
+class ExceptionFairAsyncRLock(FairAsyncRLock):
+    def release(self):
+        """Release the lock"""
+        raise asyncio.CancelledError()
+        super().release()
+
+
 @pytest.mark.asyncio
-async def test_exception_on_release_gh7():
+async def _test_exception_on_release_gh7():
     lock = ExceptionFairAsyncRLock()
 
     async def task():
@@ -543,3 +551,61 @@ async def test_exception_on_release_gh7():
     await asyncio.create_task(task())
     assert lock._owner is None, "Lock owner should be None after an exception"
     assert len(lock._queue) == 0, "Lock queue should be empty after an exception"
+
+
+@pytest.mark.asyncio
+async def test_fair_async_rlock_deadlock_scenario_regression_gh14():
+    lock = FairAsyncRLock()
+
+    # Use events to control the order of execution
+    task1_aquired = asyncio.Event()
+    task2_started = asyncio.Event()
+    task3_started = asyncio.Event()
+    task3_acquired = asyncio.Event()
+    task4_acquired = asyncio.Event()
+    task4_started = asyncio.Event()
+    task1_done = asyncio.Event()
+
+    async def task1():
+        async with lock:
+            task1_aquired.set()
+            await task2_started.wait()
+            await task3_started.wait()  # wait until Task 3 in queue too
+            await task4_started.wait()  # wait until Task 4 in queue too
+            await asyncio.sleep(0.1)  # make sure Task 4 gets in queue
+            task1_done.set()  # signal done before release, so Task 2 can cancel Task 3
+
+    async def task2():
+        await task1_aquired.wait()
+        task2_started.set()
+        await task1_done.wait()  # Wait until Task 1 done then cancel Task 3
+        t3.cancel()
+
+    async def task3():
+        await task2_started.wait()
+        task3_started.set()
+        async with lock:  # now in queue, waiting
+            task3_acquired.set()  # Should not get reached, because Task 3 will be cancelled always
+
+    async def task4():
+        await task3_started.wait()
+        await asyncio.sleep(0.1)  # make sure Task 3 gets in queue first
+        task4_started.set()
+        async with lock:  # it's now in queue, just after Task 3, and waiting
+            task4_acquired.set()  # Will get set if no bug
+
+    t1 = asyncio.create_task(task1())
+    t2 = asyncio.create_task(task2())
+    t3 = asyncio.create_task(task3())
+    t4 = asyncio.create_task(task4())
+
+    await t1
+    await t2
+    with pytest.raises(asyncio.CancelledError):
+        await t3  # Here we get ValueError: <asyncio.locks.Event object at 0x7f419f7dba90 [set]> is not in deque
+    # Task 3 would never acquire
+    assert not task3_acquired.is_set()
+
+    # Task 4 should not deadlock. It should be able to acquire the locks
+    await asyncio.wait([t4], timeout=1)
+    assert task4_acquired.is_set()

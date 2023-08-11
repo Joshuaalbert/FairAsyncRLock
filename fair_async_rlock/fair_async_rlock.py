@@ -44,7 +44,12 @@ class FairAsyncRLock:
             self._owner = me
             self._count = 1
         except asyncio.CancelledError:
-            self._queue.remove(event)
+            try: # if in queue, then cancelled before release
+                self._queue.remove(event)
+            except ValueError: # otherwise, release happened, this was next, and we simulate passing on
+                self._owner = me
+                self._count = 1
+                self._current_task_release()
             raise
 
     def _current_task_release(self):
@@ -73,10 +78,4 @@ class FairAsyncRLock:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        try:
-            self.release()
-        except asyncio.CancelledError as e:
-            if self.is_owner():
-                # If a cancellation happened during release, we force the current task to release.
-                self._current_task_release()
-            raise e
+        self.release()
