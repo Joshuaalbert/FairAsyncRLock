@@ -360,21 +360,30 @@ async def test_acquire_exception_handling():
 async def test_task_cancellation():
     # We need to verify that if a task is cancelled while waiting for the lock, it gets removed from the queue.
     lock = FairAsyncRLock()
+    t1_ac = asyncio.Event()
+    t1_done = asyncio.Event()
+    t2_ac = asyncio.Event()
 
     async def task1():
-        await lock.acquire()
-        await asyncio.sleep(0.1)  # Let's ensure the lock is held for a bit
-        lock.release()
+        async with lock:
+            t1_ac.set()
+            await t1_done.wait()
 
     async def task2():
-        await lock.acquire()
+        await t1_ac.wait()
+        async with lock:
+            t2_ac.set()
+            await asyncio.sleep(1.)  # Let's ensure the lock is held for a bit
+
 
     task1 = asyncio.create_task(task1())
     task2 = asyncio.create_task(task2())
-    await asyncio.sleep(0)  # Yield control to allow tasks to start
+    await asyncio.sleep(0.1)  # Yield control to allow tasks to start
     task2.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task2
+    assert not t2_ac.is_set() # shouldn't acquire
+    t1_done.set() # Let T1 finish
     await task1  # Ensure task1 has a chance to release the lock
     # Ensure that lock is not owned and queue is empty after cancellation
     assert lock._owner is None
