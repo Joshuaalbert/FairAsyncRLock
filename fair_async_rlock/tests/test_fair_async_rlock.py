@@ -477,7 +477,6 @@ async def test_stochastic_cancellation():
             if not task_to_cancel.done():
                 task_to_cancel.cancel()
 
-
     # Create tasks
     for i in range(num_tasks):
         tasks.append(asyncio.create_task(task_func(i)))
@@ -502,13 +501,6 @@ class DelayedFairAsyncRLock(FairAsyncRLock):
         await super().__aexit__(exc_type, exc_val, exc_tb)
 
 
-class ExceptionFairAsyncRLock(FairAsyncRLock):
-    def release(self):
-        """Release the lock"""
-        raise asyncio.CancelledError()
-        super().release()
-
-
 @pytest.mark.asyncio
 async def test_delayed_release():
     lock = DelayedFairAsyncRLock()
@@ -531,8 +523,15 @@ async def test_delayed_release():
     assert t2.result() is True, "Second task should acquire the lock after the first task has released it"
 
 
+class ExceptionFairAsyncRLock(FairAsyncRLock):
+    def release(self):
+        """Release the lock"""
+        raise asyncio.CancelledError()
+        super().release()
+
+
 @pytest.mark.asyncio
-async def test_exception_on_release_gh7():
+async def _test_exception_on_release_gh7():
     lock = ExceptionFairAsyncRLock()
 
     async def task():

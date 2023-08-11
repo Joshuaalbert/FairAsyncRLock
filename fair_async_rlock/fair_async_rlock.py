@@ -73,10 +73,4 @@ class FairAsyncRLock:
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
-        try:
-            self.release()
-        except asyncio.CancelledError as e:
-            if self.is_owner():
-                # If a cancellation happened during release, we force the current task to release.
-                self._current_task_release()
-            raise e
+        self.release()
