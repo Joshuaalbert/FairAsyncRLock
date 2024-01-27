@@ -12,6 +12,7 @@ class FairAsyncRLock:
     def __init__(self):
         self._owner: asyncio.Task | None = None
         self._count = 0
+        self._wait_event = False
         self._queue = deque()
 
     def is_owner(self, task=None):
@@ -28,8 +29,8 @@ class FairAsyncRLock:
             self._count += 1
             return
 
-        # If the lock is free, acquire it immediately
-        if self._count == 0:
+        # If the lock is free (and no pending event set actioned), acquire it immediately
+        if self._count == 0 and not self._wait_event:
             self._owner = me
             self._count = 1
             return
@@ -41,12 +42,14 @@ class FairAsyncRLock:
         # Wait for the lock to be free, then acquire
         try:
             await event.wait()
+            self._wait_event = False
             self._owner = me
             self._count = 1
         except asyncio.CancelledError:
             try: # if in queue, then cancelled before release
                 self._queue.remove(event)
             except ValueError: # otherwise, release happened, this was next, and we simulate passing on
+                self._wait_event = False
                 self._owner = me
                 self._count = 1
                 self._current_task_release()
@@ -60,6 +63,8 @@ class FairAsyncRLock:
                 # Wake up the next task in the queue
                 event = self._queue.popleft()
                 event.set()
+                # Prevent another task getting lock until waiter gets to run.
+                self._wait_event = True
 
     def release(self):
         """Release the lock"""
