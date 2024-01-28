@@ -15,6 +15,12 @@ because [python decided not to support RLock in asyncio](https://discuss.python.
 their [argument](https://discuss.python.org/t/asyncio-rlock-reentrant-locks-for-async-python/21509/2) being that every
 extra bit of functionality adds to maintenance cost.
 
+Install with
+
+```bash
+pip install fair-async-rlock
+```
+
 ## About Fair Reentrant Lock for AsyncIO
 
 A reentrant lock (or recursive lock) is a particular type of lock that can be "locked" multiple times by the same task
@@ -101,3 +107,8 @@ reentrant lock if you have a specific need for it._**
 
 The performance is about 50% slower than `asyncio.Lock`, i.e. overhead of sequential locks is about 3/2 of same
 with `asyncio.Lock`.
+
+### Change Log
+
+27 Jan, 2024 - 1.0.7 released. Fixed a bug that allowed another task to get the lock before a waiter got its turn on the
+event loop.
