@@ -375,15 +375,14 @@ async def test_task_cancellation():
             t2_ac.set()
             await asyncio.sleep(1.)  # Let's ensure the lock is held for a bit
 
-
     task1 = asyncio.create_task(task1())
     task2 = asyncio.create_task(task2())
     await asyncio.sleep(0.1)  # Yield control to allow tasks to start
     task2.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task2
-    assert not t2_ac.is_set() # shouldn't acquire
-    t1_done.set() # Let T1 finish
+    assert not t2_ac.is_set()  # shouldn't acquire
+    t1_done.set()  # Let T1 finish
     await task1  # Ensure task1 has a chance to release the lock
     # Ensure that lock is not owned and queue is empty after cancellation
     assert lock._owner is None
@@ -609,3 +608,47 @@ async def test_fair_async_rlock_deadlock_scenario_regression_gh14():
     # Task 4 should not deadlock. It should be able to acquire the locks
     await asyncio.wait([t4], timeout=1)
     assert task4_acquired.is_set()
+
+
+@pytest.mark.asyncio
+async def test_gh17_regression():
+    lock = FairAsyncRLock()
+
+    # Use events to control the order of execution
+    task1_aquired = asyncio.Event()
+    # task1_released = asyncio.Event()
+    task2_acquired = asyncio.Event()
+
+    async def task1():
+        async with lock:
+            # tell task 2 to acquire lock
+            task1_aquired.set()
+            # but sleep long enough to make sure task 2 waits on lock before we release this one.
+            await asyncio.sleep(0.1)
+        # task1_released.set()
+
+    async def task2():
+        await task1_aquired.wait()
+        async with lock:
+            task2_acquired.set()
+            # hold this for long enough to allow task3 to release first in a race condition
+            # in which task3 beats task2 to ownership and then releases only to find
+            # task2 has set ownership, giving a foreign lock assert scenario
+            await asyncio.sleep(0.2)
+
+    async def task3():
+        # NB: we achieve this race condition with sleep(0.1)
+        # awaiting task1_released does not give it the edge
+        await asyncio.sleep(0.1)
+        # await task1_released.wait()
+        async with lock:
+            # if task 3 were to get an immediate lock (beating task3 to ownership), then waiting
+            # for this means we don't release until just after task2
+            # has clobbered over our ownership.
+            await task2_acquired.wait()
+
+    t1 = asyncio.create_task(task1())
+    t2 = asyncio.create_task(task2())
+    t3 = asyncio.create_task(task3())
+
+    await asyncio.gather(t1, t2, t3)
