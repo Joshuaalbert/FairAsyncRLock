@@ -1,7 +1,9 @@
 import asyncio
 from collections import deque
 
-__all__ = ['FairAsyncRLock']
+__all__ = [
+    'FairAsyncRLock'
+]
 
 
 class FairAsyncRLock:
@@ -46,9 +48,9 @@ class FairAsyncRLock:
             self._owner = me
             self._count = 1
         except asyncio.CancelledError:
-            try: # if in queue, then cancelled before release
+            try:  # if in queue, then cancelled before release
                 self._queue.remove(event)
-            except ValueError: # otherwise, release happened, this was next, and we simulate passing on
+            except ValueError:  # otherwise, release happened, this was next, and we simulate passing on
                 self._wait_event = False
                 self._owner = me
                 self._count = 1

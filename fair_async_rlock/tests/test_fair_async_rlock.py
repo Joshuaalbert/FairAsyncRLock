@@ -375,15 +375,14 @@ async def test_task_cancellation():
             t2_ac.set()
             await asyncio.sleep(1.)  # Let's ensure the lock is held for a bit
 
-
     task1 = asyncio.create_task(task1())
     task2 = asyncio.create_task(task2())
     await asyncio.sleep(0.1)  # Yield control to allow tasks to start
     task2.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task2
-    assert not t2_ac.is_set() # shouldn't acquire
-    t1_done.set() # Let T1 finish
+    assert not t2_ac.is_set()  # shouldn't acquire
+    t1_done.set()  # Let T1 finish
     await task1  # Ensure task1 has a chance to release the lock
     # Ensure that lock is not owned and queue is empty after cancellation
     assert lock._owner is None
@@ -609,6 +608,7 @@ async def test_fair_async_rlock_deadlock_scenario_regression_gh14():
     # Task 4 should not deadlock. It should be able to acquire the locks
     await asyncio.wait([t4], timeout=1)
     assert task4_acquired.is_set()
+
 
 @pytest.mark.asyncio
 async def test_gh17_regression():
