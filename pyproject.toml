@@ -1,6 +1,23 @@
-[build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
+[project]
+name = "fair_async_rlock"
+dynamic = ["dependencies"]
+version = "1.1.0"
+description = "A well-tested implementation of a fair asynchronous RLock for concurrent programming."
+authors = [{ name = "Joshua G. Albert", email = "albert@strw.leidenuniv.nl" }]
+readme = "README.md"
+license = { text = "LICENSE" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Framework :: AnyIO",
+    "Typing :: Typed",
 ]
+urls.repository = "https://github.com/Joshuaalbert/FairAsyncRLock"
+urls.homepage = "https://github.com/Joshuaalbert/FairAsyncRLock"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
