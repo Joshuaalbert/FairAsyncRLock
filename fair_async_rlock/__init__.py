@@ -1,1 +1,3 @@
-from fair_async_rlock.fair_async_rlock import *
+from .fair_async_rlock import FairAsyncRLock
+
+__all__ = ["FairAsyncRLock"]

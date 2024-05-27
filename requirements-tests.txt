@@ -1,2 +1,3 @@
 pytest<8.0.0
-pytest-asyncio
+trio==0.25.*
+anyio==4.3.*
