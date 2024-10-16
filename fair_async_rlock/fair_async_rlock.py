@@ -22,6 +22,9 @@ class FairAsyncRLock:
             task = asyncio.current_task()
         return self._owner == task
 
+    def locked(self) -> bool:
+        return self._owner is not None
+
     async def acquire(self):
         """Acquire the lock."""
         me = asyncio.current_task()
