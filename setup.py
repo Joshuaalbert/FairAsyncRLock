@@ -1,31 +1,18 @@
 #!/usr/bin/env python
 
-from setuptools import find_packages
 from setuptools import setup
 
-with open("README.md", "r") as fh:
-    long_description = fh.read()
+install_requires = []
 
-setup(name='fair_async_rlock',
-      version='1.0.7',
-      description='A well-tested implementation of a fair asynchronous RLock for concurrent programming.',
-      long_description=long_description,
-      long_description_content_type="text/markdown",
-      url="https://github.com/Joshuaalbert/FairAsyncRLock",
-      author='Joshua G. Albert',
-      author_email='albert@strw.leidenuniv.nl',
-      setup_requires=[],
-      install_requires=[],
-      tests_require=[
-          'pytest',
-          'pytest-asyncio'
-      ],
-      package_dir={'': './'},
-      packages=find_packages('./'),
-      classifiers=[
-          "Programming Language :: Python :: 3",
-          "License :: OSI Approved :: Apache Software License",
-          "Operating System :: OS Independent",
-      ],
-      python_requires='>=3.7',
-      )
+
+def load_requirements(file_name):
+    with open(file_name, "r") as file:
+        return [line.strip() for line in file if line.strip() and not line.startswith("#")]
+
+
+setup(
+    install_requires=load_requirements("requirements.txt"),
+    extras_require={
+        "tests": load_requirements("requirements-tests.txt"),
+    }
+)

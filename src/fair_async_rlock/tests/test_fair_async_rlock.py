@@ -653,12 +653,15 @@ async def test_gh17_regression():
 
     await asyncio.gather(t1, t2, t3)
 
+
 @pytest.mark.asyncio
 def test_locked():
     lock = FairAsyncRLock()
     assert not lock.locked()
+
     async def task():
         async with lock:
             assert lock.locked()
+
     asyncio.run(task())
     assert not lock.locked()

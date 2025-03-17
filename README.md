@@ -112,3 +112,4 @@ with `asyncio.Lock`.
 
 27 Jan, 2024 - 1.0.7 released. Fixed a bug that allowed another task to get the lock before a waiter got its turn on the
 event loop.
+17 Mar, 2025 - 2.0.0 released. Remove support for < 3.10.
