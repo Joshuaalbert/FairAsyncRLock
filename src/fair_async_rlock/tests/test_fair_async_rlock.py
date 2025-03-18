@@ -764,16 +764,14 @@ def test_non_cooperative_cancel_reentrant():
             proc.join(timeout=1)
 
 
-
 def test_non_cooperative_cancel_reentrant_nested():
     num_acquires = 2
+
     def run_coroutine(q):
         async def run_test():
-            acquire_event_inner = asyncio.Event()
-            acquire_event_outer = asyncio.Event()
             lock = FairAsyncRLock()
 
-            async def while_loop_inner():
+            async def while_loop(num_children):
                 idx = 0
                 while True:
                     if idx < num_acquires:
@@ -782,29 +780,19 @@ def test_non_cooperative_cancel_reentrant_nested():
                         idx += 1
                         continue
                     else:
-                        if not acquire_event_inner.is_set():
-                            acquire_event_inner.set()
-
-            async def while_loop_outer():
-                idx = 0
-                while True:
-                    if idx < num_acquires:
-                        await lock.acquire()
-                        # await asyncio.sleep(0) # Uncommenting makes the task cooperative
-                        idx += 1
-                        continue
-                    else:
-                        if not acquire_event_outer.is_set():
-                            task = asyncio.create_task(while_loop_inner())
-                            acquire_event_outer.set()
+                        if num_children > 0:
+                            task = asyncio.create_task(while_loop(num_children - 1))
                             await task
 
-            t = asyncio.create_task(while_loop_outer())
-            await asyncio.sleep(0)  # Give the task a chance to run
-            await acquire_event_outer.wait()  # Wait for the task to acquire the lock twice
+
+            t = asyncio.create_task(while_loop(num_children=3))
+            await asyncio.sleep(1)  # Give the task a chance to run
+
             t.cancel()
             with pytest.raises(asyncio.CancelledError):
+                # Non-cooperative cancellation would timeout, and cancel never happens.
                 await t  # Cancellation should raise CancelledError if cooperative
+
             assert lock._owner == None
             assert lock._count == 0  # The lock should be released after the task is cancelled
 
@@ -831,3 +819,72 @@ def test_non_cooperative_cancel_reentrant_nested():
         if proc.is_alive():
             proc.terminate()
             proc.join(timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_chained_lock_count():
+    lock = FairAsyncRLock()
+
+    async def run_inner():
+        async with lock:
+            assert lock._count == 1
+            await asyncio.get_running_loop().create_future()
+
+    async def run_outer():
+        async with lock:
+            owner = lock._owner
+            assert lock._count == 1
+            task = asyncio.create_task(run_inner())
+            await asyncio.sleep(0.1)
+            try:
+                await task
+            except asyncio.CancelledError:
+                assert lock._count == 1
+                assert lock._owner == owner
+
+    task = asyncio.create_task(run_outer())
+    await asyncio.sleep(1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        assert lock._count == 0
+        assert lock._owner == None
+
+
+
+@pytest.mark.asyncio
+async def test_chained_lock_count_reentrant():
+    lock = FairAsyncRLock()
+
+    async def c():
+        async with lock:
+            assert lock._count == 3
+            await asyncio.get_running_loop().create_future()
+
+    async def b():
+        async with lock:
+            assert lock._count == 2
+            try:
+                await c()
+            except asyncio.CancelledError:
+                assert lock._count == 2
+                raise
+
+    async def a():
+        async with lock:
+            assert lock._count == 1
+            try:
+                await b()
+            except asyncio.CancelledError:
+                assert lock._count == 1
+                raise
+
+    task = asyncio.create_task(a())
+    await asyncio.sleep(1)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        assert lock._count == 0
+        assert lock._owner == None

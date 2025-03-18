@@ -419,13 +419,12 @@ def test_non_cooperative_cancel_reentrant():
 
 def test_non_cooperative_cancel_reentrant_nested():
     num_acquires = 2
+
     def run_coroutine(q):
         async def run_test():
-            acquire_event_inner = anyio.Event()
-            acquire_event_outer = anyio.Event()
             lock = AnyIOFairAsyncRLock()
 
-            async def while_loop_inner():
+            async def while_loop(num_children):
                 idx = 0
                 while True:
                     if idx < num_acquires:
@@ -434,28 +433,14 @@ def test_non_cooperative_cancel_reentrant_nested():
                         idx += 1
                         continue
                     else:
-                        if not acquire_event_inner.is_set():
-                            acquire_event_inner.set()
-
-            async def while_loop_outer():
-                idx = 0
-                while True:
-                    if idx < num_acquires:
-                        await lock.acquire()
-                        # await asyncio.sleep(0) # Uncommenting makes the task cooperative
-                        idx += 1
-                        continue
-                    else:
-                        if not acquire_event_outer.is_set():
+                        if num_children > 0:
                             async with anyio.create_task_group() as tg:
-                                tg.start_soon(while_loop_inner)
-                                acquire_event_outer.set()
+                                tg.start_soon(while_loop, num_children - 1)
                                 await anyio.lowlevel.checkpoint()
 
             async with anyio.create_task_group() as tg:
-                tg.start_soon(while_loop_outer)
-                await anyio.lowlevel.checkpoint()
-                await acquire_event_outer.wait()
+                tg.start_soon(while_loop, 3)
+                await asyncio.sleep(1)  # Give the task a chance to run
                 tg.cancel_scope.cancel()
 
             assert lock._owner == None
@@ -484,6 +469,7 @@ def test_non_cooperative_cancel_reentrant_nested():
         if proc.is_alive():
             proc.terminate()
             proc.join(timeout=1)
+
 
 @pytest.mark.anyio
 async def test_anyio_checkpoints():
