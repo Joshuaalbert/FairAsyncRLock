@@ -484,3 +484,27 @@ def test_non_cooperative_cancel_reentrant_nested():
         if proc.is_alive():
             proc.terminate()
             proc.join(timeout=1)
+
+@pytest.mark.anyio
+async def test_anyio_checkpoints():
+    lock = AnyIOFairAsyncRLock()
+
+    async def acquirer():
+        async with lock:
+            pass
+
+    async def neighbor():
+        if not lock.locked():
+            await anyio.sleep(0)
+
+        assert lock.locked()
+
+    # check for scheduling
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(acquirer)
+        tg.start_soon(neighbor)
+
+    # check for cancellation
+    with anyio.move_on_after(0):
+        with pytest.raises(anyio.get_cancelled_exc_class()):
+            await acquirer()
