@@ -1,4 +1,5 @@
 import asyncio
+import multiprocessing
 import random
 from time import monotonic_ns, perf_counter
 
@@ -665,3 +666,32 @@ def test_locked():
 
     asyncio.run(task())
     assert not lock.locked()
+
+
+def test_non_cooperative_cancel():
+    def run_coroutine():
+        async def run_test():
+            lock = FairAsyncRLock()
+
+            async def while_loop():
+                while True:
+                    await lock.acquire()
+                    # await asyncio.sleep(0) # Uncommenting makes the task cooperative
+
+            t = asyncio.create_task(while_loop())
+            await asyncio.sleep(0)  # Give the task a chance to run
+            t.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await t  # Cancellation should raise CancelledError if cooperative
+
+        asyncio.run(run_test())
+
+    # Because cancellation is cooperative if we try to use wait_for to test for timeout it will just run forever,
+    # because control never yielded. await keyword does not yield control.
+    # Thus, we must wrap into a process to test for hanging.
+    proc = multiprocessing.Process(target=run_coroutine)
+    proc.start()
+    # Wait for the process to finish, with a timeout.
+    proc.join(timeout=2)
+    # If the process is still alive, it means the coroutine did not yield and cancel.
+    assert not proc.is_alive(), "Test did not terminate as expected."
