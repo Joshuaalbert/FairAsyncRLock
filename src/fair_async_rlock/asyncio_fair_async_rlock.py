@@ -23,3 +23,6 @@ class FairAsyncRLock(BaseFairAsyncRLock[asyncio.Task[Any], asyncio.Event]):
 
     def _get_wake_event(self) -> asyncio.Event:
         return asyncio.Event()
+
+    async def _checkpoint(self) -> None:
+        await asyncio.sleep(0)

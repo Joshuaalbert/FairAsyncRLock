@@ -329,7 +329,7 @@ async def test_lock_cancellation_after_acquisition() -> None:
 
 
 def test_non_cooperative_cancel():
-    def run_coroutine():
+    def run_coroutine(q):
         async def run_test():
             lock = AnyIOFairAsyncRLock()
 
@@ -342,13 +342,18 @@ def test_non_cooperative_cancel():
                 tg.start_soon(while_loop)
                 await anyio.lowlevel.checkpoint()
                 tg.cancel_scope.cancel()
+            assert lock._count == 0  # The lock should be released after the task is cancelled
 
-        asyncio.run(run_test())
+        try:
+            asyncio.run(run_test())
+        except BaseException as e:
+            q.put(e)
 
     # Because cancellation is cooperative if we try to use wait_for to test for timeout it will just run forever,
     # because control never yielded. await keyword does not yield control.
     # Thus, we must wrap into a process to test for hanging.
-    proc = multiprocessing.Process(target=run_coroutine)
+    q = multiprocessing.Queue()
+    proc = multiprocessing.Process(target=run_coroutine, args=(q,))
     proc.start()
     # Wait for the process to finish, with a timeout.
     proc.join(timeout=2)
@@ -356,6 +361,125 @@ def test_non_cooperative_cancel():
     # If the process is still alive, it means the coroutine did not yield and cancel.
     try:
         assert not proc.is_alive(), "Test did not terminate as expected."
+        if not q.empty():
+            raise q.get()
+    finally:
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=1)
+
+
+def test_non_cooperative_cancel_reentrant():
+    def run_coroutine(q):
+        async def run_test():
+            event = anyio.Event()
+            lock = AnyIOFairAsyncRLock()
+
+            async def while_loop():
+                idx = 0
+                while True:
+                    await lock.acquire()
+                    # await anyio.sleep(0.) # Uncommenting makes the task cooperative
+                    idx += 1
+                    if idx == 2:
+                        event.set()
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(while_loop)
+                await anyio.lowlevel.checkpoint()
+                await event.wait()
+                tg.cancel_scope.cancel()
+            assert lock._owner == None
+            assert lock._count == 0  # The lock should be released after the task is cancelled
+
+        try:
+            asyncio.run(run_test())
+        except BaseException as e:
+            q.put(e)
+
+    # Because cancellation is cooperative if we try to use wait_for to test for timeout it will just run forever,
+    # because control never yielded. await keyword does not yield control.
+    # Thus, we must wrap into a process to test for hanging.
+    q = multiprocessing.Queue()
+    proc = multiprocessing.Process(target=run_coroutine, args=(q,))
+    proc.start()
+    # Wait for the process to finish, with a timeout.
+    proc.join(timeout=2)
+
+    # If the process is still alive, it means the coroutine did not yield and cancel.
+    try:
+        assert not proc.is_alive(), "Test did not terminate as expected."
+        if not q.empty():
+            raise q.get()
+    finally:
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=1)
+
+
+def test_non_cooperative_cancel_reentrant_nested():
+    num_acquires = 2
+    def run_coroutine(q):
+        async def run_test():
+            acquire_event_inner = anyio.Event()
+            acquire_event_outer = anyio.Event()
+            lock = AnyIOFairAsyncRLock()
+
+            async def while_loop_inner():
+                idx = 0
+                while True:
+                    if idx < num_acquires:
+                        await lock.acquire()
+                        # await asyncio.sleep(0) # Uncommenting makes the task cooperative
+                        idx += 1
+                        continue
+                    else:
+                        if not acquire_event_inner.is_set():
+                            acquire_event_inner.set()
+
+            async def while_loop_outer():
+                idx = 0
+                while True:
+                    if idx < num_acquires:
+                        await lock.acquire()
+                        # await asyncio.sleep(0) # Uncommenting makes the task cooperative
+                        idx += 1
+                        continue
+                    else:
+                        if not acquire_event_outer.is_set():
+                            async with anyio.create_task_group() as tg:
+                                tg.start_soon(while_loop_inner)
+                                acquire_event_outer.set()
+                                await anyio.lowlevel.checkpoint()
+
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(while_loop_outer)
+                await anyio.lowlevel.checkpoint()
+                await acquire_event_outer.wait()
+                tg.cancel_scope.cancel()
+
+            assert lock._owner == None
+            assert lock._count == 0  # The lock should be released after the task is cancelled
+
+        try:
+            asyncio.run(run_test())
+        except BaseException as e:
+            q.put(e)
+
+    # Because cancellation is cooperative if we try to use wait_for to test for timeout it will just run forever,
+    # because control never yielded. await keyword does not yield control.
+    # Thus, we must wrap into a process to test for hanging.
+    q = multiprocessing.Queue()
+    proc = multiprocessing.Process(target=run_coroutine, args=(q,))
+    proc.start()
+    # Wait for the process to finish, with a timeout.
+    proc.join(timeout=2)
+
+    # If the process is still alive, it means the coroutine did not yield and cancel.
+    try:
+        assert not proc.is_alive(), "Test did not terminate as expected."
+        if not q.empty():
+            raise q.get()
     finally:
         if proc.is_alive():
             proc.terminate()

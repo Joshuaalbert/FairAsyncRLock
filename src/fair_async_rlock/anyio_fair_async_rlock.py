@@ -24,3 +24,6 @@ class AnyIOFairAsyncRLock(BaseFairAsyncRLock[anyio.TaskInfo, anyio.Event]):
 
     def _get_wake_event(self) -> anyio.Event:
         return anyio.Event()
+
+    async def _checkpoint(self) -> None:
+        await anyio.lowlevel.checkpoint()

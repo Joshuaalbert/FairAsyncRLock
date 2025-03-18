@@ -25,6 +25,10 @@ class AbstractFairAsyncRLock(ABC, Generic[TaskType, EventType]):
     def _get_wake_event(self) -> EventType:
         ...
 
+    @abstractmethod
+    async def _checkpoint(self) -> None:
+        ...
+
 
 class BaseFairAsyncRLock(AbstractFairAsyncRLock[TaskType, EventType]):
     """
@@ -52,12 +56,26 @@ class BaseFairAsyncRLock(AbstractFairAsyncRLock[TaskType, EventType]):
         # If the lock is reentrant, acquire it immediately
         if self.is_owner(task=me):
             self._count += 1
+            try:
+                await self._checkpoint()
+            except self._get_cancelled_exc_class():
+                # Cancelled, while reentrant, so release the lock
+                self._owner_transfer = False
+                self._owner = me
+                self._count = 1
+                self._current_task_release()
+                raise
             return
 
         # If the lock is free (and ownership not in midst of transfer), acquire it immediately
         if self._count == 0 and not self._owner_transfer:
             self._owner = me
             self._count = 1
+            try:
+                await self._checkpoint()
+            except self._get_cancelled_exc_class():
+                self._current_task_release()
+                raise
             return
 
         # Create an event for this task, to notify when it's ready for acquire
@@ -73,7 +91,8 @@ class BaseFairAsyncRLock(AbstractFairAsyncRLock[TaskType, EventType]):
         except self._get_cancelled_exc_class():
             try:  # if in queue, then cancelled before release
                 self._queue.remove(event)
-            except ValueError:  # otherwise, release happened, this was next, and we simulate passing on
+            except ValueError:
+                # otherwise, release happened, this was next, and we simulate passing on
                 self._owner_transfer = False
                 self._owner = me
                 self._count = 1
