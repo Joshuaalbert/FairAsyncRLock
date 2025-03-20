@@ -888,3 +888,31 @@ async def test_chained_lock_count_reentrant():
     except asyncio.CancelledError:
         assert lock._count == 0
         assert lock._owner == None
+
+@pytest.mark.asyncio
+async def test_chained_lock_count_reentrant():
+    lock = FairAsyncRLock()
+
+    async def b():
+        assert lock._count == 1
+        assert lock._owner is not None
+
+        asyncio.current_task().cancel()
+
+        with pytest.raises(asyncio.CancelledError):
+            await lock.acquire()
+
+        assert lock._count == 1
+        assert lock._owner is not None
+
+    async def a():
+        assert lock._count == 0
+        assert lock._owner is None
+
+        async with lock:
+            await b()
+
+        assert lock._count == 0
+        assert lock._owner is None
+
+    await a()
