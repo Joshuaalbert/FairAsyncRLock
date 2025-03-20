@@ -15,11 +15,17 @@ because [python decided not to support RLock in asyncio](https://discuss.python.
 their [argument](https://discuss.python.org/t/asyncio-rlock-reentrant-locks-for-async-python/21509/2) being that every
 extra bit of functionality adds to maintenance cost.
 
-Install with
+Install normally for asyncio support:
 
 ```bash
-pip install fair-async-rlock
+
 ```
+
+or with AnyIO support:
+
+```bash
+pip install fair-async-rlock[anyio]
+````
 
 ## About Fair Reentrant Lock for AsyncIO
 
@@ -112,3 +118,4 @@ with `asyncio.Lock`.
 
 27 Jan, 2024 - 1.0.7 released. Fixed a bug that allowed another task to get the lock before a waiter got its turn on the
 event loop.
+17 Mar, 2025 - 2.0.0 released. Remove support for < 3.10.
